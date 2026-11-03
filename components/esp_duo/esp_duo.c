@@ -13,6 +13,7 @@
 #include "led_strip.h"
 #include "rgb_matrix_drivers.h"
 #include "rgb_matrix.h"
+#include "bsp/led_overlay.h"
 #include "esp_adc/adc_oneshot.h"
 
 static const char *TAG = "kbd_kit";
@@ -75,7 +76,9 @@ esp_err_t bsp_ws2812_init(led_strip_handle_t *led_strip)
         .mem_block_symbols = 64,
         .flags.with_dma    = false,
     };
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_led_strip));
+    led_strip_handle_t hardware_strip = NULL;
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &hardware_strip));
+    ESP_ERROR_CHECK(bsp_led_overlay_wrap(hardware_strip, &s_led_strip));
 
     if (led_strip) {
         *led_strip = s_led_strip;
@@ -86,6 +89,7 @@ esp_err_t bsp_ws2812_init(led_strip_handle_t *led_strip)
 esp_err_t bsp_ws2812_enable(bool enable)
 {
     if (!enable) {
+        ESP_ERROR_CHECK(bsp_led_overlay_set(false, 0, 0));
         gpio_hold_dis(KBD_WS2812_POWER_IO);
     }
     gpio_set_level(KBD_WS2812_POWER_IO, !enable);

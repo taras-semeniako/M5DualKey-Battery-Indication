@@ -1,6 +1,28 @@
 // DualKey 控制面板 JavaScript 功能
 // TODO: 当有设备传入connected false的时候，会直接删除容器第一个设备。暂时废弃不使用connected
 
+function validateBatteryIndicatorConfig(config) {
+    if (!config || typeof config.enabled !== 'boolean' || !['left', 'right'].includes(config.key) ||
+        !Array.isArray(config.rules) || config.rules.length > 8 || (config.enabled && !config.rules.length)) {
+        return 'batteryIndicatorInvalidConfig';
+    }
+    for (let i = 0; i < config.rules.length; i++) {
+        const rule = config.rules[i];
+        if (!rule || !Number.isInteger(rule.min_percent) || !Number.isInteger(rule.max_percent) ||
+            rule.min_percent < 0 || rule.max_percent > 100 || rule.min_percent > rule.max_percent ||
+            !Number.isInteger(rule.interval_seconds) || rule.interval_seconds < 1 ||
+            rule.interval_seconds > 86400 || typeof rule.color !== 'string' ||
+            !/^#[0-9a-f]{6}$/i.test(rule.color)) {
+            return 'batteryIndicatorInvalidRule';
+        }
+        if (config.rules.slice(0, i).some(previous =>
+            rule.min_percent <= previous.max_percent && rule.max_percent >= previous.min_percent)) {
+            return 'batteryIndicatorOverlap';
+        }
+    }
+    return null;
+}
+
 // 语言切换功能
 class LanguageManager {
     constructor() {
@@ -23,6 +45,29 @@ class LanguageManager {
                 center: '中',
                 right: '右',
                 batteryStatus: '电量状态',
+                batteryIndicatorTitle: '电量指示灯',
+                batteryIndicatorEnable: '启用电量指示灯',
+                batteryIndicatorKey: '指示按键',
+                batteryIndicatorMin: '最低电量 (%)',
+                batteryIndicatorMax: '最高电量 (%)',
+                batteryIndicatorColor: '颜色',
+                batteryIndicatorInterval: '间隔 (秒)',
+                batteryIndicatorAdd: '添加规则',
+                batteryIndicatorRemove: '删除',
+                batteryIndicatorSave: '保存指示灯设置',
+                batteryIndicatorHelp: '选择一个按键，每次闪烁 300 毫秒。连接 USB 或关闭 RGB 灯时暂停。范围包含两端，未覆盖的电量不闪烁。最多 8 条规则，间隔为 1–86400 秒。',
+                batteryIndicatorLoading: '正在读取设置…',
+                batteryIndicatorUnsaved: '有未保存的更改。',
+                batteryIndicatorSaving: '正在保存…',
+                batteryIndicatorSaved: '指示灯设置已保存。',
+                batteryIndicatorLoaded: '已读取设备设置。',
+                batteryIndicatorOffline: '设备未连接。更改尚未确认保存。',
+                batteryIndicatorTimeout: '设备未及时响应。更改尚未确认保存，请重新连接后重试。',
+                batteryIndicatorInvalidConfig: '请选择左键或右键。最多 8 条规则；启用时至少需要一条规则。',
+                batteryIndicatorInvalidRule: '电量必须为 0–100 的整数，最低值不大于最高值，颜色必须有效，间隔必须为 1–86400 秒的整数。',
+                batteryIndicatorOverlap: '电量范围不能重叠，包括范围端点。',
+                batteryIndicatorSaveFailed: '设备无法保存设置。原设置仍然有效。',
+                batteryIndicatorLoadFailed: '无法读取已保存的设置，指示灯已禁用。请检查并重新保存。',
                 batteryVoltage: '电池电压:',
                 usbVoltage: 'USB电压:',
                 switch1Value: '拨码开关1值:',
@@ -293,6 +338,29 @@ class LanguageManager {
                 center: 'Center',
                 right: 'Right',
                 batteryStatus: 'Battery Status',
+                batteryIndicatorTitle: 'Battery Indicator',
+                batteryIndicatorEnable: 'Enable battery indicator',
+                batteryIndicatorKey: 'Indicator key',
+                batteryIndicatorMin: 'Minimum battery (%)',
+                batteryIndicatorMax: 'Maximum battery (%)',
+                batteryIndicatorColor: 'Color',
+                batteryIndicatorInterval: 'Interval (seconds)',
+                batteryIndicatorAdd: 'Add rule',
+                batteryIndicatorRemove: 'Remove',
+                batteryIndicatorSave: 'Save indicator settings',
+                batteryIndicatorHelp: 'Choose one key; each flash lasts 300 ms. Pauses when USB is connected or RGB lighting is off. Ranges include both endpoints; uncovered percentages do not flash. Up to 8 rules, with intervals of 1–86400 seconds.',
+                batteryIndicatorLoading: 'Loading settings…',
+                batteryIndicatorUnsaved: 'You have unsaved changes.',
+                batteryIndicatorSaving: 'Saving…',
+                batteryIndicatorSaved: 'Indicator settings saved.',
+                batteryIndicatorLoaded: 'Device settings loaded.',
+                batteryIndicatorOffline: 'Device disconnected. Changes have not been confirmed saved.',
+                batteryIndicatorTimeout: 'The device did not respond in time. Changes have not been confirmed saved; reconnect and retry.',
+                batteryIndicatorInvalidConfig: 'Choose the left or right key. Use at most 8 rules; enabling requires at least one rule.',
+                batteryIndicatorInvalidRule: 'Battery percentages must be integers from 0–100, minimum must not exceed maximum, color must be valid, and interval must be an integer from 1–86400 seconds.',
+                batteryIndicatorOverlap: 'Battery ranges must not overlap, including endpoints.',
+                batteryIndicatorSaveFailed: 'The device could not save settings. Previous settings remain active.',
+                batteryIndicatorLoadFailed: 'Saved settings could not be loaded; the indicator is disabled. Review and save settings again.',
                 batteryVoltage: 'Battery Voltage:',
                 usbVoltage: 'USB Voltage:',
                 charging: 'Charging',
@@ -653,6 +721,12 @@ class DualKeyController {
         this.websocket = null;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
+        this.batteryIndicatorLoaded = false;
+        this.batteryIndicatorDirty = false;
+        this.batteryIndicatorSaving = false;
+        this.batteryIndicatorRequest = null;
+        this.batteryIndicatorTimer = null;
+        this.batteryIndicatorSequence = 0;
         
         // 添加心跳检测相关变量
         this.heartbeatInterval = null;
@@ -2672,6 +2746,7 @@ class DualKeyController {
                 this.sendMessage({
                     type: 'get_status'
                 });
+                this.requestBatteryIndicatorConfig();
             };
 
             this.websocket.onmessage = (event) => {
@@ -2687,6 +2762,7 @@ class DualKeyController {
                 console.log('WebSocket连接关闭');
                 this.updateConnectionStatus(false);
                 this.stopHeartbeat();
+                this.cancelBatteryIndicatorRequest();
                 this.attemptReconnect();
             };
 
@@ -2694,6 +2770,7 @@ class DualKeyController {
                 console.error('WebSocket错误:', error);
                 this.updateConnectionStatus(false);
                 this.stopHeartbeat();
+                this.cancelBatteryIndicatorRequest();
             };
 
         } catch (error) {
@@ -2726,6 +2803,10 @@ class DualKeyController {
         
         // 更新最后数据接收时间
         this.lastDataTime = Date.now();
+        if (data.type === 'battery_indicator_config') {
+            this.handleBatteryIndicatorConfig(data);
+            return;
+        }
         
         if (data.type === 'status_update') {
             // console.log('处理状态更新消息');
@@ -2844,7 +2925,179 @@ class DualKeyController {
         }
     }
 
+    setBatteryIndicatorFeedback(key, error = false) {
+        const feedback = document.getElementById('batteryIndicatorFeedback');
+        feedback.dataset.i18n = key;
+        feedback.textContent = languageManager.getText(key);
+        feedback.classList.toggle('error', error);
+    }
+
+    updateBatteryIndicatorControls() {
+        document.getElementById('batteryIndicatorFields').disabled =
+            !this.batteryIndicatorLoaded || this.batteryIndicatorSaving;
+        document.getElementById('batteryIndicatorAdd').disabled =
+            document.getElementById('batteryIndicatorRules').children.length >= 8;
+    }
+
+    readBatteryIndicatorDraft() {
+        return {
+            enabled: document.getElementById('batteryIndicatorEnabled').checked,
+            key: document.getElementById('batteryIndicatorKey').value,
+            rules: Array.from(document.querySelectorAll('.battery-indicator-row'), row => ({
+                min_percent: row.querySelector('[data-field="min_percent"]').valueAsNumber,
+                max_percent: row.querySelector('[data-field="max_percent"]').valueAsNumber,
+                color: row.querySelector('[data-field="color"]').value,
+                interval_seconds: row.querySelector('[data-field="interval_seconds"]').valueAsNumber
+            }))
+        };
+    }
+
+    renderBatteryIndicatorRules(config) {
+        document.getElementById('batteryIndicatorEnabled').checked = config.enabled;
+        document.getElementById('batteryIndicatorKey').value = config.key;
+        const container = document.getElementById('batteryIndicatorRules');
+        container.replaceChildren();
+        config.rules.forEach(rule => {
+            const row = document.createElement('div');
+            row.className = 'battery-indicator-row';
+            for (const [field, labelKey] of [
+                ['min_percent', 'batteryIndicatorMin'], ['max_percent', 'batteryIndicatorMax'],
+                ['color', 'batteryIndicatorColor'], ['interval_seconds', 'batteryIndicatorInterval']
+            ]) {
+                const label = document.createElement('label');
+                const text = document.createElement('span');
+                text.dataset.i18n = labelKey;
+                text.textContent = languageManager.getText(labelKey);
+                const input = document.createElement('input');
+                input.dataset.field = field;
+                input.type = field === 'color' ? 'color' : 'number';
+                input.value = rule[field];
+                if (field !== 'color') {
+                    input.min = field === 'interval_seconds' ? '1' : '0';
+                    input.max = field === 'interval_seconds' ? '86400' : '100';
+                    input.step = '1';
+                    input.required = true;
+                }
+                label.append(text, input);
+                row.append(label);
+            }
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn btn-secondary';
+            remove.dataset.i18n = 'batteryIndicatorRemove';
+            remove.textContent = languageManager.getText('batteryIndicatorRemove');
+            remove.addEventListener('click', () => {
+                row.remove();
+                this.batteryIndicatorDirty = true;
+                this.setBatteryIndicatorFeedback('batteryIndicatorUnsaved');
+                this.updateBatteryIndicatorControls();
+            });
+            row.append(remove);
+            container.append(row);
+        });
+        this.updateBatteryIndicatorControls();
+    }
+
+    setupBatteryIndicatorEditor() {
+        document.getElementById('batteryIndicatorFields').addEventListener('input', () => {
+            this.batteryIndicatorDirty = true;
+            this.setBatteryIndicatorFeedback('batteryIndicatorUnsaved');
+        });
+        document.getElementById('batteryIndicatorAdd').addEventListener('click', () => {
+            const config = this.readBatteryIndicatorDraft();
+            if (config.rules.length >= 8) return;
+            const used = percentage => config.rules.some(rule =>
+                percentage >= rule.min_percent && percentage <= rule.max_percent);
+            let min = 0;
+            while (min < 100 && used(min)) min++;
+            let max = min;
+            while (max < 100 && !used(max + 1)) max++;
+            config.rules.push({ min_percent: min, max_percent: max, color: '#ff0000', interval_seconds: 30 });
+            this.renderBatteryIndicatorRules(config);
+            this.batteryIndicatorDirty = true;
+            this.setBatteryIndicatorFeedback('batteryIndicatorUnsaved');
+        });
+        document.getElementById('batteryIndicatorSave').addEventListener('click', () => {
+            this.saveBatteryIndicatorConfig();
+        });
+    }
+
+    beginBatteryIndicatorRequest(action, config) {
+        if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+            this.setBatteryIndicatorFeedback('batteryIndicatorOffline', true);
+            return;
+        }
+        clearTimeout(this.batteryIndicatorTimer);
+        const requestId = `battery-${++this.batteryIndicatorSequence}`;
+        this.batteryIndicatorRequest = { id: requestId, action };
+        this.batteryIndicatorSaving = action === 'save';
+        this.updateBatteryIndicatorControls();
+        this.setBatteryIndicatorFeedback(action === 'save' ? 'batteryIndicatorSaving' : 'batteryIndicatorLoading');
+        this.sendMessage({
+            type: action === 'save' ? 'set_battery_indicator_config' : 'get_battery_indicator_config',
+            request_id: requestId,
+            ...(config ? { config } : {})
+        });
+        this.batteryIndicatorTimer = setTimeout(() => {
+            this.batteryIndicatorRequest = null;
+            this.batteryIndicatorSaving = false;
+            this.updateBatteryIndicatorControls();
+            this.setBatteryIndicatorFeedback('batteryIndicatorTimeout', true);
+        }, 10000);
+    }
+
+    requestBatteryIndicatorConfig() {
+        this.beginBatteryIndicatorRequest('load');
+    }
+
+    saveBatteryIndicatorConfig() {
+        if (this.batteryIndicatorSaving) return;
+        const config = this.readBatteryIndicatorDraft();
+        const error = validateBatteryIndicatorConfig(config);
+        if (error) {
+            this.setBatteryIndicatorFeedback(error, true);
+            return;
+        }
+        this.beginBatteryIndicatorRequest('save', config);
+    }
+
+    cancelBatteryIndicatorRequest() {
+        clearTimeout(this.batteryIndicatorTimer);
+        this.batteryIndicatorRequest = null;
+        this.batteryIndicatorSaving = false;
+        this.updateBatteryIndicatorControls();
+        this.setBatteryIndicatorFeedback('batteryIndicatorOffline', true);
+    }
+
+    handleBatteryIndicatorConfig(data) {
+        const request = this.batteryIndicatorRequest;
+        if (!request || data.request_id !== request.id || data.action !== request.action) return;
+        clearTimeout(this.batteryIndicatorTimer);
+        this.batteryIndicatorRequest = null;
+        this.batteryIndicatorSaving = false;
+        const invalid = validateBatteryIndicatorConfig(data.config);
+        if (invalid || typeof data.success !== 'boolean') {
+            this.updateBatteryIndicatorControls();
+            this.setBatteryIndicatorFeedback(invalid || 'batteryIndicatorInvalidConfig', true);
+            return;
+        }
+        this.batteryIndicatorLoaded = true;
+        if (data.action === 'save' && data.success) this.batteryIndicatorDirty = false;
+        if (!this.batteryIndicatorDirty && (data.action === 'load' || data.success)) {
+            this.renderBatteryIndicatorRules(data.config);
+        }
+        this.updateBatteryIndicatorControls();
+        const errors = ['batteryIndicatorInvalidConfig', 'batteryIndicatorInvalidRule', 'batteryIndicatorOverlap',
+            'batteryIndicatorSaveFailed', 'batteryIndicatorLoadFailed'];
+        const message = !data.success
+            ? (errors.includes(data.error) ? data.error : 'batteryIndicatorSaveFailed')
+            : this.batteryIndicatorDirty ? 'batteryIndicatorUnsaved'
+                : data.action === 'save' ? 'batteryIndicatorSaved' : 'batteryIndicatorLoaded';
+        this.setBatteryIndicatorFeedback(message, !data.success);
+    }
+
     setupEventListeners() {
+        this.setupBatteryIndicatorEditor();
         // RGB 颜色控制
         const leftKeyColor = document.getElementById('leftKeyColor');
         const rightKeyColor = document.getElementById('rightKeyColor');

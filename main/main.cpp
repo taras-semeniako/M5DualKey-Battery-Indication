@@ -34,6 +34,8 @@ extern "C" {
 #include "cJSON.h"
 #include "esp_crc.h"
 #include "web_assets.h"
+#include "battery_indicator_service.h"
+#include "bsp/led_overlay.h"
 
 // Web文件嵌入
 extern "C" {
@@ -434,7 +436,16 @@ static esp_err_t websocket_handler(httpd_req_t *req)
         if (json) {
             cJSON *type = cJSON_GetObjectItem(json, "type");
             if (type && cJSON_IsString(type)) {
-                if (strcmp(type->valuestring, "set_rgb") == 0) {
+                if (strcmp(type->valuestring, "get_battery_indicator_config") == 0 ||
+                    strcmp(type->valuestring, "set_battery_indicator_config") == 0) {
+                    ret = battery_indicator_handle_request(req, type->valuestring, json);
+                    if (ret != ESP_OK) {
+                        ESP_LOGE(TAG, "Battery indicator request failed: %s", esp_err_to_name(ret));
+                        cJSON_Delete(json);
+                        free(buf);
+                        return ret;
+                    }
+                } else if (strcmp(type->valuestring, "set_rgb") == 0) {
                     // 设置RGB颜色
                     if (rgb_matrix_get_suspend_state() == false) {
                         rgb_matrix_set_suspend_state(true);
@@ -1781,6 +1792,7 @@ static void light_progress_task(void *pvParameters)
         if (bsp_ws2812_is_enable()) {
             light_progress();
         }
+        battery_indicator_service_tick();
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 }
@@ -1874,9 +1886,12 @@ static void button_event_cb(void *button_handle, void *usr_data)
             iot_button_stop();
         }
         ESP_LOGI(TAG, "button_long_press_up");
+        ESP_ERROR_CHECK(bsp_led_overlay_suppress(false));
     } else if (event == BUTTON_LONG_PRESS_START) {
+        ESP_ERROR_CHECK(bsp_led_overlay_suppress(true));
         if (ticks >= 6900) {
             rgb_matrix_set_suspend_state(false);
+            ESP_ERROR_CHECK(bsp_led_overlay_suppress(false));
             iot_button_stop();
         } else {
             rgb_matrix_set_suspend_state(true);
@@ -2192,6 +2207,7 @@ void app_main(void)
 
     bsp_rgb_matrix_init();
     bsp_ws2812_enable(true);
+    ESP_ERROR_CHECK(battery_indicator_service_init());
     xTaskCreate(light_progress_task, "light_progress_task", 4096, NULL, 5, &light_progress_task_handle);
 
     /*!< Init keyboard key monitor */

@@ -110,6 +110,34 @@
                         </div>
                     </div>
 
+                    <div class="card battery-indicator-settings">
+                        <h3 data-i18n="batteryIndicatorTitle">电量指示灯</h3>
+                        <p class="battery-indicator-help" data-i18n="batteryIndicatorHelp"></p>
+                        <fieldset id="batteryIndicatorFields" disabled>
+                            <div class="battery-indicator-controls">
+                                <label><input type="checkbox" id="batteryIndicatorEnabled">
+                                    <span data-i18n="batteryIndicatorEnable">启用电量指示灯</span>
+                                </label>
+                                <label>
+                                    <span data-i18n="batteryIndicatorKey">指示按键</span>
+                                    <select id="batteryIndicatorKey">
+                                        <option value="left" data-i18n="leftKey">左键</option>
+                                        <option value="right" data-i18n="rightKey">右键</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div id="batteryIndicatorRules"></div>
+                            <div class="battery-indicator-actions">
+                                <button type="button" class="btn btn-secondary" id="batteryIndicatorAdd"
+                                        data-i18n="batteryIndicatorAdd">添加规则</button>
+                                <button type="button" class="btn btn-primary" id="batteryIndicatorSave"
+                                        data-i18n="batteryIndicatorSave">保存指示灯设置</button>
+                            </div>
+                        </fieldset>
+                        <p id="batteryIndicatorFeedback" role="status" aria-live="polite"
+                           data-i18n="batteryIndicatorLoading">正在读取设置…</p>
+                    </div>
+
                     <!-- HID设备状态 -->
                     <div class="card hid-status">
                         <h3 data-i18n="hidDeviceStatus">HID 设备状态</h3>
@@ -420,4 +448,3 @@
     <script src="script.js"></script>
 </body>
 </html>
-

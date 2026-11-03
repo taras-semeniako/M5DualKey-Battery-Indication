@@ -2298,3 +2298,70 @@ input:checked+.toggle-slider:before {
     font-size: 0.85rem;
     color: #555;
 }
+/* Battery indicator editor */
+.battery-indicator-settings fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+}
+
+.battery-indicator-help {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin-bottom: 16px;
+}
+
+.battery-indicator-controls,
+.battery-indicator-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.battery-indicator-controls label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.battery-indicator-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px 0;
+    border-top: 1px solid #e5e7eb;
+}
+
+.battery-indicator-row label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 0.85rem;
+    min-width: 0;
+}
+
+.battery-indicator-row input,
+.battery-indicator-controls select {
+    box-sizing: border-box;
+    min-width: 0;
+    width: 100%;
+    padding: 6px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+}
+
+.battery-indicator-row input[type="color"] {
+    height: 34px;
+}
+
+#batteryIndicatorFeedback {
+    font-size: 0.85rem;
+    margin-top: 12px;
+}
+
+#batteryIndicatorFeedback.error {
+    color: #dc2626;
+}
